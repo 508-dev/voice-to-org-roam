@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_NAME=$(basename "$0")
+ORG_DIR="${HOME}/Org"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ELISP_FILE="${SCRIPT_DIR}/../lib/org-functions.el"
+
+usage() {
+    cat <<EOF
+Usage: ${SCRIPT_NAME} <command> [args...]
+
+Commands:
+daily <content>              Add content to today's daily note
+note <name> <content>        Add content to a specific note
+
+Examples:
+${SCRIPT_NAME} daily "Meeting with John about project X"
+${SCRIPT_NAME} note "books/atomic_habits" "Chapter 1 thoughts..."
+EOF
+    exit 1
+}
+
+# Set up virtual environment if needed
+setup_venv() {
+    local venv_dir="${SCRIPT_DIR}/../.venv"
+    if [ ! -d "$venv_dir" ]; then
+        echo "Setting up Python virtual environment..."
+        python3 -m venv "$venv_dir"
+        source "${venv_dir}/bin/activate"
+        pip install -r "${SCRIPT_DIR}/../requirements.txt"
+    else
+        source "${venv_dir}/bin/activate"
+    fi
+}
+
+# Function to log debug messages
+debug_log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+}
+
+# Initialize emacs with our functions
+init_emacs() {
+    debug_log "Loading Elisp file: ${ELISP_FILE}"
+    if ! emacsclient -e "(load-file \"${ELISP_FILE}\")" 2>&1; then
+        debug_log "Failed to load Elisp file"
+        echo "Error: Failed to load ${ELISP_FILE}" >&2
+        exit 1
+    fi
+}
+
+# Process voice input through Python processor
+process_input() {
+    local content="$1"
+    local note_type="$2"
+    debug_log "Processing input: $content (type: $note_type)"
+    python3 "${SCRIPT_DIR}/../lib/process_input.py" "$note_type" "$content"
+}
+
+# Interface with org-roam via emacsclient
+add_to_org_roam() {
+    local note_type="$1"
+    local content="$2"
+
+    debug_log "Adding content to org-roam ($note_type)"
+    debug_log "Content: $content"
+
+    # Ensure our functions are loaded
+    init_emacs
+
+    # Make the emacsclient call and capture its output
+    local emacs_output
+    if ! emacs_output=$(emacsclient -e "(voice-to-org-${note_type}-capture \"$content\")" 2>&1); then
+        debug_log "Emacs error output: $emacs_output"
+        echo "Error: Failed to add content to ${note_type} note" >&2
+        exit 1
+    fi
+
+    debug_log "Emacs output: $emacs_output"
+    echo "Successfully added content to $note_type note"
+}
+
+# Handle daily note command
+cmd_daily() {
+    if [ $# -lt 1 ]; then
+        echo "Error: Content required for daily note"
+        usage
+    fi
+
+    local content
+    content=$(process_input "$1" "daily")
+    local today
+    today=$(date +%Y-%m-%d)
+    local daily_file="${ORG_DIR}/notes/daily/${today}.org"
+
+    add_to_org_roam "$daily_file" "$content"
+}
+
+# Handle specific note command
+cmd_note() {
+    if [ $# -lt 2 ]; then
+        echo "Error: Note name and content required"
+        usage
+    fi
+
+    local note_name="$1"
+    local content
+    content=$(process_input "$2" "general")
+    local note_file="${ORG_DIR}/notes/${note_name}.org"
+
+    add_to_org_roam "$note_file" "$content"
+}
+
+# Main function
+main() {
+    debug_log "Starting voice-to-org"
+    debug_log "Arguments: $*"
+
+    if [ $# -lt 2 ]; then
+        echo "Usage: $0 <note_type> <content>" >&2
+        exit 1
+    fi
+
+    local note_type="$1"
+    shift
+    local content="$*"
+
+    debug_log "Note type: $note_type"
+    debug_log "Content: $content"
+
+    # Start or connect to Emacs daemon
+    if ! emacsclient -e '(+ 1 2)' &>/dev/null; then
+        debug_log "Starting Emacs daemon..."
+        emacs --daemon
+    fi
+
+    # Process and add the content
+    add_to_org_roam "$note_type" "$content"
+}
+
+main "$@"
+

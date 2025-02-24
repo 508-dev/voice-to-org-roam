@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Ensure virtual environment is activated
+source "${SCRIPT_DIR}/../.venv/bin/activate"
+
+# Record and process voice input
+note_type="$1"
+if [ "$note_type" = "note" ]; then
+    if [ $# -ne 2 ]; then
+        echo "Usage: $0 note <note-name>" >&2
+        exit 1
+    fi
+    note_name="$2"
+    text=$(python3 "${SCRIPT_DIR}/../lib/record_voice.py" "note")
+    "${SCRIPT_DIR}/voice-to-org" note "$note_name" "$text"
+else
+    text=$(python3 "${SCRIPT_DIR}/../lib/record_voice.py" "daily")
+    "${SCRIPT_DIR}/voice-to-org" daily "$text"
+fi
