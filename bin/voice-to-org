@@ -80,36 +80,6 @@ add_to_org_roam() {
     echo "Successfully added content to $note_type note"
 }
 
-# Handle daily note command
-cmd_daily() {
-    if [ $# -lt 1 ]; then
-        echo "Error: Content required for daily note"
-        usage
-    fi
-
-    local content
-    content=$(process_input "$1" "daily")
-    local today
-    today=$(date +%Y-%m-%d)
-    local daily_file="${ORG_DIR}/notes/daily/${today}.org"
-
-    add_to_org_roam "$daily_file" "$content"
-}
-
-# Handle specific note command
-cmd_note() {
-    if [ $# -lt 2 ]; then
-        echo "Error: Note name and content required"
-        usage
-    fi
-
-    local note_name="$1"
-    local content
-    content=$(process_input "$2" "general")
-    local note_file="${ORG_DIR}/notes/${note_name}.org"
-
-    add_to_org_roam "$note_file" "$content"
-}
 
 # Main function
 main() {
@@ -139,4 +109,3 @@ main() {
 }
 
 main "$@"
-
